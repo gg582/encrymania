@@ -1,0 +1,1 @@
+mvn exec:java -Dexec.mainClass="com.encrymania.CryptanalysisTool" -Dexec.args="--key data/key.bin --encrypted data/encrypted_weak.bin --plain data/plain.txt"
