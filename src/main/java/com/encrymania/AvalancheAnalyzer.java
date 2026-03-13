@@ -1,13 +1,15 @@
+package com.encrymania;
+
 import java.util.Arrays;
 
-public class SACAnalyzer {
+public class AvalancheAnalyzer {
 
 	/**
 	 * @param engine 지수귀문도 C 라이브러리와 연결된 암호화 엔진 (JNI 또는 Process 실행기)
 	 * @param samplePlain 분석에 사용할 평문 (보통 16바이트 블록 단위)
-	 * @return SAC 만족도 점수 (0~100, 100에 가까울수록 이상적)
+	 * @return Avalanche 만족도 점수 (0~100, 100에 가까울수록 이상적)
 	 */
-	public double analyzeSAC(EncryptionEngine engine, byte[] samplePlain) {
+	public double analyzeAvalanche(EncryptionEngine engine, byte[] samplePlain) {
 		int blockSize = samplePlain.length;
 		int numBits = blockSize * 8;
 
@@ -32,7 +34,7 @@ public class SACAnalyzer {
 			}
 		}
 
-		return calculateSACScore(avalancheMatrix, testIterations);
+		return calculateAvalancheScore(avalancheMatrix, testIterations);
 	}
 
 	// 특정 위치의 비트를 반전시키는 메서드
@@ -49,8 +51,8 @@ public class SACAnalyzer {
 		return (c1[byteIdx] & mask) != (c2[byteIdx] & mask);
 	}
 
-	// 최종 SAC 점수 계산 (이상적인 확률 0.5와의 편차 측정)
-	private double calculateSACScore(int[][] matrix, int iterations) {
+	// 최종 Avalanche 점수 계산 (이상적인 확률 0.5와의 편차 측정)
+	private double calculateAvalancheScore(int[][] matrix, int iterations) {
 		double totalDeviation = 0;
 		int numBits = matrix.length;
 		double ideal = 0.5;
