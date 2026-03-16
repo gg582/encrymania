@@ -5,52 +5,58 @@ import org.apache.commons.math3.transform.*;
 
 public class SpectralAnalyzer {
 
-    /**
-     * @param encryptedData 분석할 암호화된 바이너리 데이터 (최소 1MB 권장)
-     * @return Spectral Test 통과 점수 (0~100)
-     */
     public double analyzeSpectral(byte[] encryptedData) {
-        int n = encryptedData.length * 8; // 전체 비트 수
-        double[] x = new double[n];
-
-        // 1. 데이터를 비트 스트림(-1, +1)으로 변환
-        // 0은 -1로, 1은 +1로 매핑하여 직류 성분 제거
-        for (int i = 0; i < encryptedData.length; i++) {
-            for (int j = 0; j < 8; j++) {
-                int bit = (encryptedData[i] >> (7 - j)) & 1;
-                x[i * 8 + j] = 2 * bit - 1;
+        try {
+            // 분석에 사용할 데이터 크기를 1MB(2^20 bits)로 고정하여 안정성 확보
+            // 1MB = 131,072 bytes
+            int targetBytes = 131072;
+            if (encryptedData.length < targetBytes) {
+                // 데이터가 부족하면 현재 가진 크기 중 가장 큰 2의 거듭제곱 비트만큼 사용
+                int totalBits = encryptedData.length * 8;
+                targetBytes = Integer.highestOneBit(totalBits) / 8;
             }
-        }
 
-        // 2. FFT(Fast Fourier Transform) 수행
-        // 입력 크기가 2의 거듭제곱이어야 하므로 적절히 조정 필요 (여기선 단순화)
-        FastFourierTransformer transformer = new FastFourierTransformer(DftNormalization.STANDARD);
-        Complex[] out = transformer.transform(x, TransformType.FORWARD);
+            if (targetBytes < 128) return 0;
 
-        // 3. 진폭(Magnitude) 계산 및 임계값(Threshold) 설정
-        double[] magnitudes = new double[n / 2];
-        double threshold = Math.sqrt(Math.log(1 / 0.05) * n); // 95% 신뢰구간 임계값
-        int n0 = (int) (0.95 * (n / 2.0)); // 이론적 기대치 (임계값 이하의 피크 수)
-        int actualN1 = 0; // 실제 임계값 이하인 피크 수 계산
+            int n = targetBytes * 8; // 비트 수 (반드시 2의 거듭제곱)
+            double[] x = new double[n];
 
-        for (int i = 0; i < n / 2; i++) {
-            magnitudes[i] = out[i].abs();
-            if (magnitudes[i] < threshold) {
-                actualN1++;
+            for (int i = 0; i < n; i++) {
+                int byteIdx = i / 8;
+                int bitShift = 7 - (i % 8);
+                int bit = (encryptedData[byteIdx] >> bitShift) & 1;
+                x[i] = 2.0 * bit - 1.0;
             }
+
+            FastFourierTransformer transformer = new FastFourierTransformer(DftNormalization.STANDARD);
+            Complex[] out = transformer.transform(x, TransformType.FORWARD);
+
+            int halfN = n / 2;
+            double threshold = Math.sqrt(Math.log(1.0 / 0.05) * n);
+            int n0 = (int) (0.95 * halfN);
+            int actualN1 = 0;
+
+            for (int i = 0; i < halfN; i++) {
+                if (out[i].abs() < threshold) {
+                    actualN1++;
+                }
+            }
+
+            double d = (actualN1 - n0) / Math.sqrt(n * 0.95 * 0.05 / 4.0);
+            double pValue = Math.exp(-d * d / 2.0);
+
+            if (Double.isNaN(pValue)) return 0;
+            return convertPValueToScore(pValue);
+
+        } catch (Exception e) {
+            // 터미널에 에러 메시지를 직접 출력하여 원인 파악
+            System.err.println("\n[!] DFT Error: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            return 0;
         }
-
-        // 4. P-Value 도출 (통계적 유의성 검정)
-        // d 값이 0에 가까울수록 이상적이며, 멀어질수록 주기성이 강하다는 증거
-        double d = (actualN1 - n0) / Math.sqrt(n * 0.95 * 0.05 / 4.0);
-        double pValue = Math.exp(-d * d / 2.0); // 단순화된 P-Value 계산
-
-        return convertPValueToScore(pValue);
     }
 
     private double convertPValueToScore(double pValue) {
-        // pValue가 0.01보다 크면 통계적으로 무작위하다고 간주
-        if (pValue < 0.01) return pValue * 100; // 매우 낮은 점수
-        return Math.min(100, 50 + (pValue * 50)); // 높은 점수
+        if (pValue < 0.01) return pValue * 100;
+        return Math.min(100, 50 + (pValue * 50));
     }
 }

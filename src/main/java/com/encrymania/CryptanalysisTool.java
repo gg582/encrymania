@@ -54,7 +54,7 @@ private static void analyze(byte[] key, byte[] encrypted, byte[] plain) {
         AvalancheAnalyzer avalanche = new AvalancheAnalyzer();
         SpectralAnalyzer spectral = new SpectralAnalyzer();
 
-        double dftScore = spectral.analyzeSpectral(java.util.Arrays.copyOf(encrypted, 1048576));
+	 double dftScore = spectral.analyzeSpectral(encrypted);
 
         // 4. 결과 출력 (새 항목 포함)
         System.out.printf("1. 샤논 엔트로피: %.4f bits (Ideal: 8.0)\n", entropy);
@@ -134,28 +134,47 @@ private static void analyze(byte[] key, byte[] encrypted, byte[] plain) {
         return 100;
     }
 
-    private static double testKasiski(byte[] data) {
-        // 3 길이의 시퀀스가 반복되는지 검사합니다.
-	// 만약 반복성이 있다면 점수가 나빠집니다.
-	// 이상적으로 암호화되었다면 완전히 무작위처럼 보여야 합니다.
-        Map<String, List<Integer>> sequences = new HashMap<>();
-        int seqLen = 3;
-        for (int i = 0; i <= data.length - seqLen; i++) {
-            String seq = String.format("%02x%02x%02x", data[i], data[i+1], data[i+2]);
-            sequences.computeIfAbsent(seq, k -> new ArrayList<>()).add(i);
-        }
+		private static double testKasiski(byte[] data) {
+		    // 데이터가 너무 적으면 분석의 의미가 없으므로 100점 반환
+		    if (data.length < 100) return 100;
 
-        int repeatedCount = 0;
-        for (List<Integer> positions : sequences.values()) {
-            if (positions.size() > 1) {
-                repeatedCount++;
-            }
-        }
+		    // 대용량 데이터(10M+) 분석을 위해 패턴 탐색 길이를 4바이트로 상향
+		    // (256^4 = 약 42억 가짓수로, 무작위 데이터에서의 우연한 중복 방지)
+		    int seqLen = 4;
 
-        // 데이터 크기와 연관된 반복 패턴 등이 있으면 확실한 감점 요소가 됩니다.
-        double penalty = (double) repeatedCount / (data.length / seqLen) * 200;
-        return Math.max(0, 100 - penalty);
-    }
+		    // 패턴 출현 횟수 기록 (Integer를 키로 사용하여 메모리 효율 극대화)
+		    Map<Integer, Integer> counts = new HashMap<>();
+
+		    // 슬라이딩 윈도우 방식으로 전체 데이터 스캔
+		    for (int i = 0; i <= data.length - seqLen; i++) {
+		        // 비트 시프트를 이용해 4바이트 정수(int) 패턴 생성
+		        // String.format 방식보다 수십 배 빠르고 GC 부하가 거의 없음
+		        int pattern = ((data[i] & 0xFF) << 24) |
+		                      ((data[i+1] & 0xFF) << 16) |
+		                      ((data[i+2] & 0xFF) << 8)  |
+		                      (data[i+3] & 0xFF);
+
+		        counts.put(pattern, counts.getOrDefault(pattern, 0) + 1);
+		    }
+
+		    // 통계적 중복 횟수 집계
+		    int repeatedCount = 0;
+		    for (int count : counts.values()) {
+		        if (count > 1) {
+		            // 동일 패턴이 n번 나타나면 n-1번의 중복으로 간주
+		            repeatedCount += (count - 1);
+		        }
+		    }
+
+		    // 페널티 계산 로직 (대용량 정규화 반영)
+		    // 10M 데이터에서 4바이트 패턴이 발견되는 것은 통계적으로 매우 드문 일이므로,
+		    // 발견된 중복은 지수귀문도 구조나 CTR 모드 상의 주기적 결함일 확률이 높음.
+		    // 현실적인 감점 계수(50)를 적용하여 정밀 분석 수행.
+		    double penalty = (double) repeatedCount / (data.length / (double) seqLen) * 50;
+
+		    // 최종 점수 계산 (최솟값 0점 보장)
+		    return Math.max(0, 100 - penalty);
+		}
 
     private static double testBlockPatterns(byte[] encrypted) {
         int blockSize = 16;
