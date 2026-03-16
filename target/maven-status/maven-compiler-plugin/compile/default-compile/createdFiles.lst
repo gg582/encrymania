@@ -1,5 +1,4 @@
 com/encrymania/SampleDataGenerator.class
-com/encrymania/CryptanalysisTool.class
 com/encrymania/SpectralAnalyzer.class
 com/encrymania/EncryptionEngine.class
 com/encrymania/AvalancheAnalyzer.class

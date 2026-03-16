@@ -54,38 +54,19 @@ private static void analyze(byte[] key, byte[] encrypted, byte[] plain) {
         AvalancheAnalyzer avalanche = new AvalancheAnalyzer();
         SpectralAnalyzer spectral = new SpectralAnalyzer();
 
-        // 3. Avalanche (Strict Avalanche Criterion) 측정
-                double sacScore = avalanche.analyzeAvalanche(inputData -> {
-            try {
-                byte[] result = runExternalEncryptor(inputData, new String(key, java.nio.charset.StandardCharsets.UTF_8));
-                if (result == null) {
-                    // 에러 발생: 기본 바이트 배열 반환
-                    System.err.println("외부 암호화기 실행 실패, 기본 배열을 반환합니다.");
-                    // Use inputData.length to match the expected size of the data being processed by avalanche
-                    return new byte[inputData.length];
-                }
-                return result;
-            } catch (Exception e) {
-                System.err.println("쇄도 효과 분석 오류: " + e.getMessage());
-                return new byte[inputData.length];
-            }
-        }, Arrays.copyOf(plain, 16)); // 평문의 앞 16바이트로 테스트
+        double dftScore = spectral.analyzeSpectral(java.util.Arrays.copyOf(encrypted, 1048576));
 
-        // 4. Spectral (DFT) 분석
-        // double 0.0 = spectral.analyzeSpectral(java.util.Arrays.copyOf(encrypted, 1048576));
-
-        // 5. 결과 출력 (새 항목 포함)
+        // 4. 결과 출력 (새 항목 포함)
         System.out.printf("1. 샤논 엔트로피: %.4f bits (Ideal: 8.0)\n", entropy);
         System.out.printf("2. 선형/산술 상관관계: %.2f/100\n", arithmeticScore);
-        System.out.printf("3. Avalanche (Strict Avalanche): %.2f/100\n", sacScore); // 추가
-        System.out.printf("4. 스펙트럼 (DFT) 분석: %.2f/100\n", 0.0); // 추가
-        System.out.printf("5. Kasiski Pattern Analysis: %.2f/100\n", kasiskiScore);
-        System.out.printf("6. Block Structural Analysis (ECB): %.2f/100\n", blockScore);
+        System.out.printf("3. 스펙트럼 (DFT) 분석: %.2f/100\n", dftScore);
+        System.out.printf("4. Kasiski Pattern Analysis: %.2f/100\n", kasiskiScore);
+        System.out.printf("5. Block Structural Analysis (ECB): %.2f/100\n", blockScore);
 
-        // 6. 전체 점수 계산 (6개 항목 평균)
+        // 5. 전체 점수 계산 (6개 항목 평균)
         double totalScore = (Math.min(100, (entropy / 8.0) * 100) +
-                            arithmeticScore + sacScore + 
-                            kasiskiScore + blockScore) / 6.0;
+                                arithmeticScore + dftScore +
+                            kasiskiScore + blockScore) / 5.0;
 
         System.out.println("----------------------------------------");
         System.out.printf("Overall Security Score: %.2f / 100\n", totalScore);
@@ -194,53 +175,4 @@ private static void analyze(byte[] key, byte[] encrypted, byte[] plain) {
         double penalty = (double) repeats / (encrypted.length / blockSize) * 100;
         return Math.max(0, 100 - penalty);
     }
-
-    private static byte[] runExternalEncryptor(byte[] input, String key) throws IOException, InterruptedException {
-        // 1. 분석용 임시 데이터 파일 생성
-        java.nio.file.Path tempIn = Paths.get("sac_test_input.bin");
-        java.nio.file.Path tempOut = Paths.get(".", "sac_test_input.bin.choi"); // 보통 바이너리가 .enc를 붙인다고 가정
-
-        Files.write(tempIn, input);
-
-        // 2. 외부 프로세스 실행: echo "pw1234" | ./choienc sac_test_input.bin
-        // 셸의 파이프 기능을 써야 하므로 /bin/sh -c 를 활용합니다.
-        String cmd = String.format("echo \"%s\" | ./choicrypt/choienc %s", key, tempIn.toString());
-        ProcessBuilder pb = new ProcessBuilder("/bin/sh", "-c", cmd);
-
-        // 에러 발생 시 터미널에서 바로 볼 수 있게 설정
-        pb.redirectError(ProcessBuilder.Redirect.INHERIT);
-
-        Process p;
-        try {
-            p = pb.start();
-        } catch (IOException e) {
-            System.err.println("Failed to start process: " + e.getMessage());
-            return null; // Indicate failure
-        }
-        
-        int exitCode = p.waitFor();
-        try { Thread.sleep(50); } catch (InterruptedException e) { }
-        try { Thread.sleep(50); } catch (InterruptedException e) { }
-
-        // 3. 생성된 암호화 파일 읽기
-        byte[] encrypted = null;
-        if (exitCode == 0 && Files.exists(tempOut)) {
-            long fileSize = Files.size(tempOut);
-            if (fileSize > 0) {
-                encrypted = Files.readAllBytes(tempOut);
-            } else {
-                System.err.println("Warning: Output file is empty. Check if choienc produced any output.");
-            }
-            Files.deleteIfExists(tempIn);
-            Files.deleteIfExists(tempOut);
-        } else {
-            System.err.println("외부 암호화기 실행 오류. 종료 코드: " + exitCode + ". 출력 파일 존재 여부: " + Files.exists(tempOut));
-            if (exitCode != 0) {
-                System.err.println("choienc 로그 또는 출력을 확인하세요 상세 내용을 확인하세요.");
-            }
-        }
-
-        return encrypted;
-		}
-
 }

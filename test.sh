@@ -16,8 +16,8 @@ fi
 
 # 3. Create a sample plain text if not exists
 if [ ! -f "test.txt" ]; then
-		echo "Generating 1KB random test file from /dev/urandom..."
-		dd if=/dev/urandom of=test.txt bs=1048576 count=1 status=none
+		echo "Generating 10M random test file from /dev/urandom..."
+		dd if=/dev/urandom of=test.txt bs=10M count=1 status=none
 fi
 
 # 4. Run Encryption
